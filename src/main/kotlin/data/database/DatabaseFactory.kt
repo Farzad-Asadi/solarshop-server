@@ -1,5 +1,7 @@
 package com.example.data.database
 
+import com.example.data.SyncDevicesTable
+import com.example.data.table.ProductCategoriesTable
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.jetbrains.exposed.sql.*
@@ -21,7 +23,13 @@ object DatabaseFactory {
         Database.connect(ds)
 
         transaction {
-            SchemaUtils.create(UsersTable, EntitlementsTable, RefreshTokensTable)
+            SchemaUtils.create(UsersTable,
+                EntitlementsTable,
+                RefreshTokensTable,
+                SyncDevicesTable,
+                ProductCategoriesTable,
+
+            )
         }
     }
 }

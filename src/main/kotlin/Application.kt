@@ -4,6 +4,8 @@ import com.auth0.jwt.JWT
 import com.example.data.database.DatabaseFactory
 import com.example.data.database.EntitlementRepository
 import com.example.data.database.UserRepository
+import com.example.data.repository.ProductCategoryRepository
+import com.example.data.repository.SyncDeviceRepository
 import com.example.server.auth.TokenService
 import com.example.server.dto.*
 import com.example.server.otp.OtpService
@@ -58,8 +60,8 @@ fun Application.module() {
 
 
     // --- کانفیگ ساده (در عمل از env/config بخوان)
-    val issuer = "bambo.local"
-    val audience = "bambo.app"
+    val issuer = "solarshop.local"
+    val audience = "solarshop.app"
     val jwtSecret = System.getenv("JWT_SECRET") ?: "dev-secret-change-me"
 
     val sms: SmsSender = ConsoleSmsSender()
@@ -92,7 +94,7 @@ fun Application.module() {
     }
 
     DatabaseFactory.init(
-        jdbcUrl = System.getenv("DB_URL") ?: "jdbc:postgresql://localhost:5432/bambo",
+        jdbcUrl = System.getenv("DB_URL") ?: "jdbc:postgresql://localhost:5432/solarshop",
         driver = "org.postgresql.Driver",
         user = System.getenv("DB_USER") ?: "postgres",
         pass = System.getenv("DB_PASS") ?: "postgres"
@@ -100,6 +102,8 @@ fun Application.module() {
 
     val users = UserRepository()
     val ents = EntitlementRepository()
+    val syncDeviceRepository = SyncDeviceRepository()
+    val categoryRepository = ProductCategoryRepository()
 
     routing {
         // سلامت
@@ -158,6 +162,80 @@ fun Application.module() {
 
         }
 
+
+
+
+
+        route("/sync") {
+
+            get("/ping") {
+                call.respond(
+                    SyncPingResponse(
+                        ok = true,
+                        message = "pong"
+                    )
+                )
+            }
+
+            get("/status") {
+                call.respond(
+                    SyncStatusResponse(
+                        serverTime = System.currentTimeMillis(),
+                        serverVersion = 1,
+                        message = "server ready"
+                    )
+                )
+            }
+
+            post("/register-device") {
+                val request = call.receive<RegisterDeviceRequest>()
+
+                syncDeviceRepository.registerOrUpdate(
+                    deviceId = request.deviceId,
+                    platform = request.platform,
+                    appVersion = request.appVersion
+                )
+
+                call.respond(
+                    RegisterDeviceResponse(
+                        accepted = true,
+                        serverVersion = 1
+                    )
+                )
+            }
+
+            get("/categories") {
+                val since = call.request.queryParameters["since"]
+                    ?.toLongOrNull()
+                    ?: 0L
+
+                val categories = if (since > 0L) {
+                    categoryRepository.getChangedSince(since)
+                } else {
+                    categoryRepository.getAll()
+                }
+
+                call.respond(categories)
+            }
+
+            post("/categories") {
+                val categories = call.receive<List<CategorySyncDto>>()
+
+                categoryRepository.upsertAll(categories)
+
+                call.respond(
+                    BasicOkResponse(
+                        ok = true,
+                        message = "categories synced"
+                    )
+                )
+            }
+        }
+
+
+
+
+
         // --- مسیرهای محافظت‌شده با Bearer ---
         authenticate("auth-jwt") {
             get("/me") {
@@ -173,5 +251,7 @@ fun Application.module() {
             }
         }
     }
+
+
 }
 
