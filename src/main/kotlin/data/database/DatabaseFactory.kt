@@ -1,6 +1,7 @@
 package com.example.data.database
 
 import com.example.data.SyncDevicesTable
+import com.example.data.table.ProductBrandsTable
 import com.example.data.table.ProductCategoriesTable
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
@@ -28,6 +29,7 @@ object DatabaseFactory {
                 RefreshTokensTable,
                 SyncDevicesTable,
                 ProductCategoriesTable,
+                ProductBrandsTable,
 
             )
         }

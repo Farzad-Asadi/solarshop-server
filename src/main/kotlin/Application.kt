@@ -4,6 +4,7 @@ import com.auth0.jwt.JWT
 import com.example.data.database.DatabaseFactory
 import com.example.data.database.EntitlementRepository
 import com.example.data.database.UserRepository
+import com.example.data.repository.ProductBrandRepository
 import com.example.data.repository.ProductCategoryRepository
 import com.example.data.repository.SyncDeviceRepository
 import com.example.server.auth.TokenService
@@ -104,6 +105,7 @@ fun Application.module() {
     val ents = EntitlementRepository()
     val syncDeviceRepository = SyncDeviceRepository()
     val categoryRepository = ProductCategoryRepository()
+    val brandRepository = ProductBrandRepository()
 
     routing {
         // سلامت
@@ -227,6 +229,33 @@ fun Application.module() {
                     BasicOkResponse(
                         ok = true,
                         message = "categories synced"
+                    )
+                )
+            }
+
+            get("/brands") {
+                val since = call.request.queryParameters["since"]
+                    ?.toLongOrNull()
+                    ?: 0L
+
+                val brands = if (since > 0L) {
+                    brandRepository.getChangedSince(since)
+                } else {
+                    brandRepository.getAll()
+                }
+
+                call.respond(brands)
+            }
+
+            post("/brands") {
+                val brands = call.receive<List<BrandSyncDto>>()
+
+                brandRepository.upsertAll(brands)
+
+                call.respond(
+                    BasicOkResponse(
+                        ok = true,
+                        message = "brands synced"
                     )
                 )
             }
