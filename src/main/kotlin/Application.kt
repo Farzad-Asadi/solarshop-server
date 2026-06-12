@@ -6,6 +6,7 @@ import com.example.data.database.EntitlementRepository
 import com.example.data.database.UserRepository
 import com.example.data.repository.ProductBrandRepository
 import com.example.data.repository.ProductCategoryRepository
+import com.example.data.repository.ProductRepository
 import com.example.data.repository.SyncDeviceRepository
 import com.example.server.auth.TokenService
 import com.example.server.dto.*
@@ -106,6 +107,7 @@ fun Application.module() {
     val syncDeviceRepository = SyncDeviceRepository()
     val categoryRepository = ProductCategoryRepository()
     val brandRepository = ProductBrandRepository()
+    val productRepository = ProductRepository()
 
     routing {
         // سلامت
@@ -219,7 +221,6 @@ fun Application.module() {
 
                 call.respond(categories)
             }
-
             post("/categories") {
                 val categories = call.receive<List<CategorySyncDto>>()
 
@@ -246,7 +247,6 @@ fun Application.module() {
 
                 call.respond(brands)
             }
-
             post("/brands") {
                 val brands = call.receive<List<BrandSyncDto>>()
 
@@ -256,6 +256,32 @@ fun Application.module() {
                     BasicOkResponse(
                         ok = true,
                         message = "brands synced"
+                    )
+                )
+            }
+
+            get("/products") {
+                val since = call.request.queryParameters["since"]
+                    ?.toLongOrNull()
+                    ?: 0L
+
+                val products = if (since > 0L) {
+                    productRepository.getChangedSince(since)
+                } else {
+                    productRepository.getAll()
+                }
+
+                call.respond(products)
+            }
+            post("/products") {
+                val products = call.receive<List<ProductSyncDto>>()
+
+                productRepository.upsertAll(products)
+
+                call.respond(
+                    BasicOkResponse(
+                        ok = true,
+                        message = "products synced"
                     )
                 )
             }

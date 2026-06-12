@@ -63,6 +63,11 @@ class ProductBrandRepository {
                         it[deletedAt] = null
                     }
                 } else {
+                    val currentUpdatedAt = existing[ProductBrandsTable.updatedAt]
+
+                    if (brand.updatedAt <= currentUpdatedAt) {
+                        return@forEach
+                    }
                     ProductBrandsTable.update(
                         where = { ProductBrandsTable.uid eq brand.uid }
                     ) {
