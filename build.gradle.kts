@@ -49,7 +49,7 @@ dependencies {
 }
 
 application {
-    mainClass.set("com.example.bambo.server.ApplicationKt")
+    mainClass.set("com.example.ApplicationKt")
 }
 
 java {
