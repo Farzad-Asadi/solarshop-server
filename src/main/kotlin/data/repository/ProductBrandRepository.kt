@@ -21,7 +21,8 @@ class ProductBrandRepository {
                         description = row[ProductBrandsTable.description],
                         imageFileName = row[ProductBrandsTable.imageFileName],
                         isActive = row[ProductBrandsTable.isActive],
-                        updatedAt = row[ProductBrandsTable.updatedAt]
+                        updatedAt = row[ProductBrandsTable.updatedAt],
+                        deletedAt = row[ProductBrandsTable.deletedAt]
                     )
                 }
         }
@@ -38,7 +39,8 @@ class ProductBrandRepository {
                         description = row[ProductBrandsTable.description],
                         imageFileName = row[ProductBrandsTable.imageFileName],
                         isActive = row[ProductBrandsTable.isActive],
-                        updatedAt = row[ProductBrandsTable.updatedAt]
+                        updatedAt = row[ProductBrandsTable.updatedAt],
+                        deletedAt = row[ProductBrandsTable.deletedAt]
                     )
                 }
         }
@@ -61,6 +63,7 @@ class ProductBrandRepository {
                         it[isActive] = brand.isActive
                         it[updatedAt] = brand.updatedAt
                         it[deletedAt] = null
+                        it[deletedAt] = brand.deletedAt
                     }
                 } else {
                     val currentUpdatedAt = existing[ProductBrandsTable.updatedAt]
@@ -76,6 +79,7 @@ class ProductBrandRepository {
                         it[imageFileName] = brand.imageFileName
                         it[isActive] = brand.isActive
                         it[updatedAt] = brand.updatedAt
+                        it[deletedAt] = brand.deletedAt
                     }
                 }
             }
