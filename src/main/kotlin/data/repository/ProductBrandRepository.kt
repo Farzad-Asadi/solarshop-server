@@ -62,7 +62,6 @@ class ProductBrandRepository {
                         it[imageFileName] = brand.imageFileName
                         it[isActive] = brand.isActive
                         it[updatedAt] = brand.updatedAt
-                        it[deletedAt] = null
                         it[deletedAt] = brand.deletedAt
                     }
                 } else {

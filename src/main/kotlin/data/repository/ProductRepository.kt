@@ -57,8 +57,20 @@ class ProductRepository {
 
                 } else {
                     val currentUpdatedAt = existing[ProductsTable.updatedAt]
+                    val currentDeletedAt = existing[ProductsTable.deletedAt]
 
-                    if (product.updatedAt <= currentUpdatedAt) {
+                    val incomingIsDelete = product.deletedAt != null
+                    val currentIsDeleted = currentDeletedAt != null
+
+// اگر روی سرور حذف شده، و ورودی فقط ویرایش معمولی است، اجازه زنده شدن نده
+                    if (currentIsDeleted && !incomingIsDelete) {
+                        return@forEach
+                    }
+
+// اگر ورودی حذف است، حذف باید حتی روی ویرایش جدیدتر هم برنده شود
+                    val shouldAccept = incomingIsDelete || product.updatedAt > currentUpdatedAt
+
+                    if (!shouldAccept) {
                         return@forEach
                     }
 
@@ -71,7 +83,7 @@ class ProductRepository {
                         it[model] = product.model
                         it[description] = product.description
                         it[isArchived] = product.isArchived
-                        it[updatedAt] = product.updatedAt
+                        it[updatedAt] = if (incomingIsDelete) System.currentTimeMillis() else product.updatedAt
                         it[deletedAt] = product.deletedAt
                     }
                 }

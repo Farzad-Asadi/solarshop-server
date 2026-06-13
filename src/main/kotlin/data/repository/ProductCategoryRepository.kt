@@ -42,7 +42,6 @@ class ProductCategoryRepository {
                         it[imageFileName] = category.imageFileName
                         it[sortOrder] = category.sortOrder
                         it[updatedAt] = category.updatedAt
-                        it[deletedAt] = null
                         it[deletedAt] = category.deletedAt
                     }
                 } else {
