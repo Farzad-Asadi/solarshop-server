@@ -108,6 +108,7 @@ fun Application.module() {
     val brandRepository = ProductBrandRepository()
     val productRepository = ProductRepository()
     val productImageRepository = ProductImageRepository()
+    val inventoryTransactionRepository = InventoryTransactionRepository()
 
     val uploadsDir = File(
         System.getenv("UPLOADS_DIR") ?: "uploads"
@@ -399,6 +400,38 @@ fun Application.module() {
                     BasicOkResponse(
                         ok = true,
                         message = "product images synced"
+                    )
+                )
+            }
+
+            get("/inventory-transactions") {
+
+                val since = call.request.queryParameters["since"]
+                    ?.toLongOrNull()
+                    ?: 0L
+
+                val items =
+                    if (since > 0L) {
+                        inventoryTransactionRepository
+                            .getChangedSince(since)
+                    } else {
+                        inventoryTransactionRepository
+                            .getAll()
+                    }
+
+                call.respond(items)
+            }
+            post("/inventory-transactions") {
+
+                val items =
+                    call.receive<List<InventoryTransactionSyncDto>>()
+
+                inventoryTransactionRepository.upsertAll(items)
+
+                call.respond(
+                    BasicOkResponse(
+                        ok = true,
+                        message = "inventory transactions synced"
                     )
                 )
             }
