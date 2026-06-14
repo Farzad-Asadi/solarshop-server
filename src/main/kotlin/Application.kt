@@ -4,10 +4,7 @@ import com.auth0.jwt.JWT
 import com.example.data.database.DatabaseFactory
 import com.example.data.database.EntitlementRepository
 import com.example.data.database.UserRepository
-import com.example.data.repository.ProductBrandRepository
-import com.example.data.repository.ProductCategoryRepository
-import com.example.data.repository.ProductRepository
-import com.example.data.repository.SyncDeviceRepository
+import com.example.data.repository.*
 import com.example.server.auth.TokenService
 import com.example.server.dto.*
 import com.example.server.otp.OtpService
@@ -27,8 +24,10 @@ import kotlinx.serialization.json.Json
 import io.ktor.server.plugins.callloging.*
 import io.ktor.server.plugins.cors.routing.*
 import io.ktor.http.*
+import io.ktor.http.content.*
 import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
+import java.io.File
 
 fun main() {
     embeddedServer(Netty, port = 8080) { module() }.start(wait = true)
@@ -108,6 +107,13 @@ fun Application.module() {
     val categoryRepository = ProductCategoryRepository()
     val brandRepository = ProductBrandRepository()
     val productRepository = ProductRepository()
+    val productImageRepository = ProductImageRepository()
+
+    val uploadsDir = File(
+        System.getenv("UPLOADS_DIR") ?: "uploads"
+    ).apply {
+        mkdirs()
+    }
 
     routing {
         // سلامت
@@ -168,7 +174,93 @@ fun Application.module() {
 
 
 
+        route("/files") {
 
+            post("/upload") {
+                val multipart = call.receiveMultipart()
+
+                var savedFileName: String? = null
+
+                multipart.forEachPart { part ->
+                    when (part) {
+                        is PartData.FileItem -> {
+                            val originalName = part.originalFileName ?: "image.jpg"
+
+                            val safeName = originalName
+                                .substringAfterLast("/")
+                                .substringAfterLast("\\")
+                                .replace(Regex("[^A-Za-z0-9._-]"), "_")
+
+                            val finalFileName = if (safeName.startsWith("img_")) {
+                                safeName
+                            } else {
+                                "img_${System.currentTimeMillis()}_$safeName"
+                            }
+
+                            val targetFile = File(uploadsDir, finalFileName)
+
+                            part.streamProvider().use { input ->
+                                targetFile.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+
+                            savedFileName = finalFileName
+                        }
+
+                        else -> Unit
+                    }
+
+                    part.dispose()
+                }
+
+                val fileName = savedFileName
+                    ?: return@post call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("message" to "file_not_found")
+                    )
+
+                call.respond(
+                    mapOf(
+                        "fileName" to fileName
+                    )
+                )
+            }
+
+            get("/{fileName}") {
+                val fileName = call.parameters["fileName"]
+                    ?: return@get call.respond(HttpStatusCode.BadRequest)
+
+                val safeName = fileName
+                    .substringAfterLast("/")
+                    .substringAfterLast("\\")
+
+                val file = File(uploadsDir, safeName)
+
+                if (!file.exists()) {
+                    return@get call.respond(HttpStatusCode.NotFound)
+                }
+
+                call.respondFile(file)
+            }
+
+            get("/exists/{fileName}") {
+                val fileName = call.parameters["fileName"]
+                    ?: return@get call.respond(HttpStatusCode.BadRequest)
+
+                val safeName = fileName
+                    .substringAfterLast("/")
+                    .substringAfterLast("\\")
+
+                val exists = File(uploadsDir, safeName).exists()
+
+                call.respond(
+                    mapOf(
+                        "exists" to exists
+                    )
+                )
+            }
+        }
 
         route("/sync") {
 
@@ -282,6 +374,31 @@ fun Application.module() {
                     BasicOkResponse(
                         ok = true,
                         message = "products synced"
+                    )
+                )
+            }
+            get("/product-images") {
+                val since = call.request.queryParameters["since"]
+                    ?.toLongOrNull()
+                    ?: 0L
+
+                val images = if (since > 0L) {
+                    productImageRepository.getChangedSince(since)
+                } else {
+                    productImageRepository.getAll()
+                }
+
+                call.respond(images)
+            }
+            post("/product-images") {
+                val images = call.receive<List<ProductImageSyncDto>>()
+
+                productImageRepository.upsertAll(images)
+
+                call.respond(
+                    BasicOkResponse(
+                        ok = true,
+                        message = "product images synced"
                     )
                 )
             }

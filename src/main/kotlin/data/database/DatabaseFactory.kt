@@ -3,6 +3,7 @@ package com.example.data.database
 import com.example.data.SyncDevicesTable
 import com.example.data.table.ProductBrandsTable
 import com.example.data.table.ProductCategoriesTable
+import com.example.data.table.ProductImagesTable
 import com.example.data.table.ProductsTable
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
@@ -32,6 +33,7 @@ object DatabaseFactory {
                 ProductCategoriesTable,
                 ProductBrandsTable,
                 ProductsTable,
+                ProductImagesTable,
 
 
 
