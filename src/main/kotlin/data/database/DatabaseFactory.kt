@@ -34,6 +34,9 @@ object DatabaseFactory {
                 InventoryTransactionsTable,
                 ProductPurchasePricesTable,
                 ProductSalePricesTable,
+                CategoryAttributeDefinitionsTable,
+                ProductAttributeValuesTable,
+
 
 
 

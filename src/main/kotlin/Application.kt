@@ -115,6 +115,8 @@ fun Application.module() {
     val inventoryTransactionRepository = InventoryTransactionRepository()
     val productPurchasePriceRepository = ProductPurchasePriceRepository()
     val productSalePriceRepository = ProductSalePriceRepository()
+    val categoryAttributeDefinitionRepository = CategoryAttributeDefinitionRepository()
+    val productAttributeValueRepository = ProductAttributeValueRepository()
 
     val uploadsDir = File(
         System.getenv("UPLOADS_DIR") ?: "uploads"
@@ -505,6 +507,73 @@ fun Application.module() {
                     )
                 )
             }
+
+            get("/category-attribute-definitions") {
+
+                val since = call.request.queryParameters["since"]
+                    ?.toLongOrNull()
+                    ?: 0L
+
+                val items =
+                    if (since > 0L) {
+                        categoryAttributeDefinitionRepository
+                            .getChangedSince(since)
+                    } else {
+                        categoryAttributeDefinitionRepository
+                            .getAll()
+                    }
+
+                call.respond(items)
+            }
+            post("/category-attribute-definitions") {
+
+                val items =
+                    call.receive<List<CategoryAttributeDefinitionSyncDto>>()
+
+                categoryAttributeDefinitionRepository.upsertAll(items)
+
+                call.respond(
+                    BasicOkResponse(
+                        ok = true,
+                        message = "category attribute definitions synced"
+                    )
+                )
+            }
+
+            get("/product-attribute-values") {
+
+                val since = call.request.queryParameters["since"]
+                    ?.toLongOrNull()
+                    ?: 0L
+
+                val items =
+                    if (since > 0L) {
+                        productAttributeValueRepository
+                            .getChangedSince(since)
+                    } else {
+                        productAttributeValueRepository
+                            .getAll()
+                    }
+
+                call.respond(items)
+            }
+            post("/product-attribute-values") {
+
+                val items =
+                    call.receive<List<ProductAttributeValueSyncDto>>()
+
+                productAttributeValueRepository.upsertAll(items)
+
+                call.respond(
+                    BasicOkResponse(
+                        ok = true,
+                        message = "product attribute values synced"
+                    )
+                )
+            }
+
+
+
         }
 
 
