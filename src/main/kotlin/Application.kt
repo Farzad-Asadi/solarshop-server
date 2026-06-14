@@ -94,6 +94,10 @@ fun Application.module() {
         }
     }
 
+
+    println("DB_URL = ${System.getenv("DB_URL")}")
+    println("DB_USER = ${System.getenv("DB_USER")}")
+
     DatabaseFactory.init(
         jdbcUrl = System.getenv("DB_URL") ?: "jdbc:postgresql://localhost:5432/solarshop",
         driver = "org.postgresql.Driver",
@@ -109,6 +113,8 @@ fun Application.module() {
     val productRepository = ProductRepository()
     val productImageRepository = ProductImageRepository()
     val inventoryTransactionRepository = InventoryTransactionRepository()
+    val productPurchasePriceRepository = ProductPurchasePriceRepository()
+    val productSalePriceRepository = ProductSalePriceRepository()
 
     val uploadsDir = File(
         System.getenv("UPLOADS_DIR") ?: "uploads"
@@ -432,6 +438,70 @@ fun Application.module() {
                     BasicOkResponse(
                         ok = true,
                         message = "inventory transactions synced"
+                    )
+                )
+            }
+
+            get("/purchase-prices") {
+
+                val since = call.request.queryParameters["since"]
+                    ?.toLongOrNull()
+                    ?: 0L
+
+                val items =
+                    if (since > 0L) {
+                        productPurchasePriceRepository
+                            .getChangedSince(since)
+                    } else {
+                        productPurchasePriceRepository
+                            .getAll()
+                    }
+
+                call.respond(items)
+            }
+            post("/purchase-prices") {
+
+                val items =
+                    call.receive<List<ProductPurchasePriceSyncDto>>()
+
+                productPurchasePriceRepository.upsertAll(items)
+
+                call.respond(
+                    BasicOkResponse(
+                        ok = true,
+                        message = "purchase prices synced"
+                    )
+                )
+            }
+
+            get("/sale-prices") {
+
+                val since = call.request.queryParameters["since"]
+                    ?.toLongOrNull()
+                    ?: 0L
+
+                val items =
+                    if (since > 0L) {
+                        productSalePriceRepository
+                            .getChangedSince(since)
+                    } else {
+                        productSalePriceRepository
+                            .getAll()
+                    }
+
+                call.respond(items)
+            }
+            post("/sale-prices") {
+
+                val items =
+                    call.receive<List<ProductSalePriceSyncDto>>()
+
+                productSalePriceRepository.upsertAll(items)
+
+                call.respond(
+                    BasicOkResponse(
+                        ok = true,
+                        message = "sale prices synced"
                     )
                 )
             }
