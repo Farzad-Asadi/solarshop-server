@@ -6,10 +6,14 @@ import com.example.data.database.EntitlementRepository
 import com.example.data.database.UserRepository
 import com.example.data.repository.*
 import com.example.server.auth.TokenService
+import com.example.server.currency.BrsCurrencyService
+import com.example.server.currency.CurrencyRateScheduler
 import com.example.server.dto.*
 import com.example.server.otp.OtpService
 import com.example.server.sms.ConsoleSmsSender
 import com.example.server.sms.SmsSender
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
@@ -28,6 +32,12 @@ import io.ktor.http.content.*
 import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
 import java.io.File
+
+
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation as ClientContentNegotiation
+import io.ktor.serialization.kotlinx.json.json as clientJson
 
 fun main() {
     embeddedServer(Netty, port = 8080) { module() }.start(wait = true)
@@ -117,6 +127,40 @@ fun Application.module() {
     val productSalePriceRepository = ProductSalePriceRepository()
     val categoryAttributeDefinitionRepository = CategoryAttributeDefinitionRepository()
     val productAttributeValueRepository = ProductAttributeValueRepository()
+    val productUnitRepository = ProductUnitRepository()
+    val currencyRateRepository = CurrencyRateRepository()
+
+
+    val brsApiKey =
+        System.getenv("BRS_API_KEY") ?: ""
+
+    val externalHttpClient =
+        HttpClient(CIO) {
+            install(ClientContentNegotiation) {
+                clientJson(
+                    Json {
+                        ignoreUnknownKeys = true
+                        explicitNulls = false
+                    }
+                )
+            }
+        }
+
+    val brsCurrencyService =
+        BrsCurrencyService(
+            client = externalHttpClient,
+            apiKey = brsApiKey
+        )
+
+    val currencyRateScheduler =
+        CurrencyRateScheduler(
+            brsCurrencyService = brsCurrencyService,
+            currencyRateRepository = currencyRateRepository
+        )
+
+    currencyRateScheduler.start(this)
+
+
 
     val uploadsDir = File(
         System.getenv("UPLOADS_DIR") ?: "uploads"
@@ -181,7 +225,68 @@ fun Application.module() {
 
         }
 
+        route("/currency") {
 
+            post("/fetch-usd-now") {
+                val rate =
+                    currencyRateScheduler.fetchAndSaveNow()
+
+                if (rate == null) {
+                    return@post call.respond(
+                        HttpStatusCode.BadGateway,
+                        CurrencyFetchResponse(
+                            ok = false,
+                            message = "usd_rate_not_found_or_fetch_failed"
+                        )
+                    )
+                }
+
+                call.respond(
+                    CurrencyFetchResponse(
+                        ok = true,
+                        rateToman = rate,
+                        message = "usd_rate_saved"
+                    )
+                )
+            }
+            get("/fetch-usd-now") {
+                try {
+                    val rate =
+                        brsCurrencyService.fetchUsdRateToman()
+
+                    if (rate == null || rate <= 0L) {
+                        return@get call.respond(
+                            HttpStatusCode.BadGateway,
+                            CurrencyFetchResponse(
+                                ok = false,
+                                message = "usd_rate_not_found"
+                            )
+                        )
+                    }
+
+                    currencyRateRepository.insertFetchedUsdRate(
+                        rateToman = rate
+                    )
+
+                    call.respond(
+                        CurrencyFetchResponse(
+                            ok = true,
+                            rateToman = rate,
+                            message = "usd_rate_saved"
+                        )
+                    )
+
+                } catch (e: Exception) {
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        CurrencyFetchResponse(
+                            ok = false,
+                            message = e.message ?: "fetch_failed"
+                        )
+                    )
+                }
+            }
+        }
 
         route("/files") {
 
@@ -568,6 +673,64 @@ fun Application.module() {
                     BasicOkResponse(
                         ok = true,
                         message = "product attribute values synced"
+                    )
+                )
+            }
+
+            get("/units") {
+                val since = call.request.queryParameters["since"]
+                    ?.toLongOrNull()
+                    ?: 0L
+
+                val items =
+                    if (since > 0L) {
+                        productUnitRepository.getChangedSince(since)
+                    } else {
+                        productUnitRepository.getAll()
+                    }
+
+                call.respond(items)
+            }
+            post("/units") {
+                val items =
+                    call.receive<List<ProductUnitSyncDto>>()
+
+                productUnitRepository.upsertAll(items)
+
+                call.respond(
+                    BasicOkResponse(
+                        ok = true,
+                        message = "units synced"
+                    )
+                )
+            }
+
+            get("/currency-rates") {
+
+                val since = call.request.queryParameters["since"]
+                    ?.toLongOrNull()
+                    ?: 0L
+
+                val items =
+                    if (since > 0L) {
+                        currencyRateRepository.getChangedSince(since)
+                    } else {
+                        currencyRateRepository.getAll()
+                    }
+
+                call.respond(items)
+            }
+            post("/currency-rates") {
+
+                val items =
+                    call.receive<List<CurrencyRateSyncDto>>()
+
+                currencyRateRepository.upsertAll(items)
+
+                call.respond(
+                    BasicOkResponse(
+                        ok = true,
+                        message = "currency rates synced"
                     )
                 )
             }
