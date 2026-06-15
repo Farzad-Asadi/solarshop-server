@@ -79,8 +79,8 @@ fun Application.module() {
     val otp = OtpService(sms)
     val tokenService = TokenService(
         issuer, audience, secret = jwtSecret,
-        accessTtlSec = 30,      // ⬅️ برای تست: 30 ثانیه
-        refreshTtlSec = 600     // ⬅️ 10 دقیقه
+        accessTtlSec = 900,            // 15 دقیقه
+        refreshTtlSec = 2_592_000      // 30 روز
     )
 
     val jwtVerifier = tokenService.verifier()
@@ -225,48 +225,30 @@ fun Application.module() {
 
         }
 
-        route("/currency") {
 
-            post("/fetch-usd-now") {
-                val rate =
-                    currencyRateScheduler.fetchAndSaveNow()
 
-                if (rate == null) {
-                    return@post call.respond(
-                        HttpStatusCode.BadGateway,
-                        CurrencyFetchResponse(
-                            ok = false,
-                            message = "usd_rate_not_found_or_fetch_failed"
-                        )
-                    )
-                }
 
-                call.respond(
-                    CurrencyFetchResponse(
-                        ok = true,
-                        rateToman = rate,
-                        message = "usd_rate_saved"
-                    )
-                )
-            }
-            get("/fetch-usd-now") {
-                try {
+
+
+
+        // --- مسیرهای محافظت‌شده با Bearer ---
+        authenticate("auth-jwt") {
+
+            route("/currency") {
+
+                post("/fetch-usd-now") {
                     val rate =
-                        brsCurrencyService.fetchUsdRateToman()
+                        currencyRateScheduler.fetchAndSaveNow()
 
-                    if (rate == null || rate <= 0L) {
-                        return@get call.respond(
+                    if (rate == null) {
+                        return@post call.respond(
                             HttpStatusCode.BadGateway,
                             CurrencyFetchResponse(
                                 ok = false,
-                                message = "usd_rate_not_found"
+                                message = "usd_rate_not_found_or_fetch_failed"
                             )
                         )
                     }
-
-                    currencyRateRepository.insertFetchedUsdRate(
-                        rateToman = rate
-                    )
 
                     call.respond(
                         CurrencyFetchResponse(
@@ -275,476 +257,498 @@ fun Application.module() {
                             message = "usd_rate_saved"
                         )
                     )
+                }
+                get("/fetch-usd-now") {
+                    try {
+                        val rate =
+                            brsCurrencyService.fetchUsdRateToman()
 
-                } catch (e: Exception) {
+                        if (rate == null || rate <= 0L) {
+                            return@get call.respond(
+                                HttpStatusCode.BadGateway,
+                                CurrencyFetchResponse(
+                                    ok = false,
+                                    message = "usd_rate_not_found"
+                                )
+                            )
+                        }
+
+                        currencyRateRepository.insertFetchedUsdRate(
+                            rateToman = rate
+                        )
+
+                        call.respond(
+                            CurrencyFetchResponse(
+                                ok = true,
+                                rateToman = rate,
+                                message = "usd_rate_saved"
+                            )
+                        )
+
+                    } catch (e: Exception) {
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            CurrencyFetchResponse(
+                                ok = false,
+                                message = e.message ?: "fetch_failed"
+                            )
+                        )
+                    }
+                }
+            }
+
+            route("/files") {
+
+                post("/upload") {
+                    val multipart = call.receiveMultipart()
+
+                    var savedFileName: String? = null
+
+                    multipart.forEachPart { part ->
+                        when (part) {
+                            is PartData.FileItem -> {
+                                val originalName = part.originalFileName ?: "image.jpg"
+
+                                val safeName = originalName
+                                    .substringAfterLast("/")
+                                    .substringAfterLast("\\")
+                                    .replace(Regex("[^A-Za-z0-9._-]"), "_")
+
+                                val finalFileName = if (safeName.startsWith("img_")) {
+                                    safeName
+                                } else {
+                                    "img_${System.currentTimeMillis()}_$safeName"
+                                }
+
+                                val targetFile = File(uploadsDir, finalFileName)
+
+                                part.streamProvider().use { input ->
+                                    targetFile.outputStream().use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+
+                                savedFileName = finalFileName
+                            }
+
+                            else -> Unit
+                        }
+
+                        part.dispose()
+                    }
+
+                    val fileName = savedFileName
+                        ?: return@post call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("message" to "file_not_found")
+                        )
+
                     call.respond(
-                        HttpStatusCode.InternalServerError,
-                        CurrencyFetchResponse(
-                            ok = false,
-                            message = e.message ?: "fetch_failed"
+                        mapOf(
+                            "fileName" to fileName
+                        )
+                    )
+                }
+
+                get("/{fileName}") {
+                    val fileName = call.parameters["fileName"]
+                        ?: return@get call.respond(HttpStatusCode.BadRequest)
+
+                    val safeName = fileName
+                        .substringAfterLast("/")
+                        .substringAfterLast("\\")
+
+                    val file = File(uploadsDir, safeName)
+
+                    if (!file.exists()) {
+                        return@get call.respond(HttpStatusCode.NotFound)
+                    }
+
+                    call.respondFile(file)
+                }
+
+                get("/exists/{fileName}") {
+                    val fileName = call.parameters["fileName"]
+                        ?: return@get call.respond(HttpStatusCode.BadRequest)
+
+                    val safeName = fileName
+                        .substringAfterLast("/")
+                        .substringAfterLast("\\")
+
+                    val exists = File(uploadsDir, safeName).exists()
+
+                    call.respond(
+                        mapOf(
+                            "exists" to exists
                         )
                     )
                 }
             }
-        }
 
-        route("/files") {
+            route("/sync") {
 
-            post("/upload") {
-                val multipart = call.receiveMultipart()
+                get("/ping") {
+                    call.respond(
+                        SyncPingResponse(
+                            ok = true,
+                            message = "pong"
+                        )
+                    )
+                }
 
-                var savedFileName: String? = null
+                get("/status") {
+                    call.respond(
+                        SyncStatusResponse(
+                            serverTime = System.currentTimeMillis(),
+                            serverVersion = 1,
+                            message = "server ready"
+                        )
+                    )
+                }
 
-                multipart.forEachPart { part ->
-                    when (part) {
-                        is PartData.FileItem -> {
-                            val originalName = part.originalFileName ?: "image.jpg"
+                post("/register-device") {
+                    val request = call.receive<RegisterDeviceRequest>()
 
-                            val safeName = originalName
-                                .substringAfterLast("/")
-                                .substringAfterLast("\\")
-                                .replace(Regex("[^A-Za-z0-9._-]"), "_")
+                    syncDeviceRepository.registerOrUpdate(
+                        deviceId = request.deviceId,
+                        platform = request.platform,
+                        appVersion = request.appVersion
+                    )
 
-                            val finalFileName = if (safeName.startsWith("img_")) {
-                                safeName
-                            } else {
-                                "img_${System.currentTimeMillis()}_$safeName"
-                            }
+                    call.respond(
+                        RegisterDeviceResponse(
+                            accepted = true,
+                            serverVersion = 1
+                        )
+                    )
+                }
 
-                            val targetFile = File(uploadsDir, finalFileName)
+                get("/categories") {
+                    val since = call.request.queryParameters["since"]
+                        ?.toLongOrNull()
+                        ?: 0L
 
-                            part.streamProvider().use { input ->
-                                targetFile.outputStream().use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
+                    val categories = if (since > 0L) {
+                        categoryRepository.getChangedSince(since)
+                    } else {
+                        categoryRepository.getAll()
+                    }
 
-                            savedFileName = finalFileName
+                    call.respond(categories)
+                }
+                post("/categories") {
+                    val categories = call.receive<List<CategorySyncDto>>()
+
+                    categoryRepository.upsertAll(categories)
+
+                    call.respond(
+                        BasicOkResponse(
+                            ok = true,
+                            message = "categories synced"
+                        )
+                    )
+                }
+
+                get("/brands") {
+                    val since = call.request.queryParameters["since"]
+                        ?.toLongOrNull()
+                        ?: 0L
+
+                    val brands = if (since > 0L) {
+                        brandRepository.getChangedSince(since)
+                    } else {
+                        brandRepository.getAll()
+                    }
+
+                    call.respond(brands)
+                }
+                post("/brands") {
+                    val brands = call.receive<List<BrandSyncDto>>()
+
+                    brandRepository.upsertAll(brands)
+
+                    call.respond(
+                        BasicOkResponse(
+                            ok = true,
+                            message = "brands synced"
+                        )
+                    )
+                }
+
+                get("/products") {
+                    val since = call.request.queryParameters["since"]
+                        ?.toLongOrNull()
+                        ?: 0L
+
+                    val products = if (since > 0L) {
+                        productRepository.getChangedSince(since)
+                    } else {
+                        productRepository.getAll()
+                    }
+
+                    call.respond(products)
+                }
+                post("/products") {
+                    val products = call.receive<List<ProductSyncDto>>()
+
+                    productRepository.upsertAll(products)
+
+                    call.respond(
+                        BasicOkResponse(
+                            ok = true,
+                            message = "products synced"
+                        )
+                    )
+                }
+                get("/product-images") {
+                    val since = call.request.queryParameters["since"]
+                        ?.toLongOrNull()
+                        ?: 0L
+
+                    val images = if (since > 0L) {
+                        productImageRepository.getChangedSince(since)
+                    } else {
+                        productImageRepository.getAll()
+                    }
+
+                    call.respond(images)
+                }
+                post("/product-images") {
+                    val images = call.receive<List<ProductImageSyncDto>>()
+
+                    productImageRepository.upsertAll(images)
+
+                    call.respond(
+                        BasicOkResponse(
+                            ok = true,
+                            message = "product images synced"
+                        )
+                    )
+                }
+
+                get("/inventory-transactions") {
+
+                    val since = call.request.queryParameters["since"]
+                        ?.toLongOrNull()
+                        ?: 0L
+
+                    val items =
+                        if (since > 0L) {
+                            inventoryTransactionRepository
+                                .getChangedSince(since)
+                        } else {
+                            inventoryTransactionRepository
+                                .getAll()
                         }
 
-                        else -> Unit
-                    }
+                    call.respond(items)
+                }
+                post("/inventory-transactions") {
 
-                    part.dispose()
+                    val items =
+                        call.receive<List<InventoryTransactionSyncDto>>()
+
+                    inventoryTransactionRepository.upsertAll(items)
+
+                    call.respond(
+                        BasicOkResponse(
+                            ok = true,
+                            message = "inventory transactions synced"
+                        )
+                    )
                 }
 
-                val fileName = savedFileName
-                    ?: return@post call.respond(
-                        HttpStatusCode.BadRequest,
-                        mapOf("message" to "file_not_found")
+                get("/purchase-prices") {
+
+                    val since = call.request.queryParameters["since"]
+                        ?.toLongOrNull()
+                        ?: 0L
+
+                    val items =
+                        if (since > 0L) {
+                            productPurchasePriceRepository
+                                .getChangedSince(since)
+                        } else {
+                            productPurchasePriceRepository
+                                .getAll()
+                        }
+
+                    call.respond(items)
+                }
+                post("/purchase-prices") {
+
+                    val items =
+                        call.receive<List<ProductPurchasePriceSyncDto>>()
+
+                    productPurchasePriceRepository.upsertAll(items)
+
+                    call.respond(
+                        BasicOkResponse(
+                            ok = true,
+                            message = "purchase prices synced"
+                        )
                     )
-
-                call.respond(
-                    mapOf(
-                        "fileName" to fileName
-                    )
-                )
-            }
-
-            get("/{fileName}") {
-                val fileName = call.parameters["fileName"]
-                    ?: return@get call.respond(HttpStatusCode.BadRequest)
-
-                val safeName = fileName
-                    .substringAfterLast("/")
-                    .substringAfterLast("\\")
-
-                val file = File(uploadsDir, safeName)
-
-                if (!file.exists()) {
-                    return@get call.respond(HttpStatusCode.NotFound)
                 }
 
-                call.respondFile(file)
-            }
+                get("/sale-prices") {
 
-            get("/exists/{fileName}") {
-                val fileName = call.parameters["fileName"]
-                    ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val since = call.request.queryParameters["since"]
+                        ?.toLongOrNull()
+                        ?: 0L
 
-                val safeName = fileName
-                    .substringAfterLast("/")
-                    .substringAfterLast("\\")
+                    val items =
+                        if (since > 0L) {
+                            productSalePriceRepository
+                                .getChangedSince(since)
+                        } else {
+                            productSalePriceRepository
+                                .getAll()
+                        }
 
-                val exists = File(uploadsDir, safeName).exists()
+                    call.respond(items)
+                }
+                post("/sale-prices") {
 
-                call.respond(
-                    mapOf(
-                        "exists" to exists
+                    val items =
+                        call.receive<List<ProductSalePriceSyncDto>>()
+
+                    productSalePriceRepository.upsertAll(items)
+
+                    call.respond(
+                        BasicOkResponse(
+                            ok = true,
+                            message = "sale prices synced"
+                        )
                     )
-                )
-            }
-        }
-
-        route("/sync") {
-
-            get("/ping") {
-                call.respond(
-                    SyncPingResponse(
-                        ok = true,
-                        message = "pong"
-                    )
-                )
-            }
-
-            get("/status") {
-                call.respond(
-                    SyncStatusResponse(
-                        serverTime = System.currentTimeMillis(),
-                        serverVersion = 1,
-                        message = "server ready"
-                    )
-                )
-            }
-
-            post("/register-device") {
-                val request = call.receive<RegisterDeviceRequest>()
-
-                syncDeviceRepository.registerOrUpdate(
-                    deviceId = request.deviceId,
-                    platform = request.platform,
-                    appVersion = request.appVersion
-                )
-
-                call.respond(
-                    RegisterDeviceResponse(
-                        accepted = true,
-                        serverVersion = 1
-                    )
-                )
-            }
-
-            get("/categories") {
-                val since = call.request.queryParameters["since"]
-                    ?.toLongOrNull()
-                    ?: 0L
-
-                val categories = if (since > 0L) {
-                    categoryRepository.getChangedSince(since)
-                } else {
-                    categoryRepository.getAll()
                 }
 
-                call.respond(categories)
-            }
-            post("/categories") {
-                val categories = call.receive<List<CategorySyncDto>>()
+                get("/category-attribute-definitions") {
 
-                categoryRepository.upsertAll(categories)
+                    val since = call.request.queryParameters["since"]
+                        ?.toLongOrNull()
+                        ?: 0L
 
-                call.respond(
-                    BasicOkResponse(
-                        ok = true,
-                        message = "categories synced"
+                    val items =
+                        if (since > 0L) {
+                            categoryAttributeDefinitionRepository
+                                .getChangedSince(since)
+                        } else {
+                            categoryAttributeDefinitionRepository
+                                .getAll()
+                        }
+
+                    call.respond(items)
+                }
+                post("/category-attribute-definitions") {
+
+                    val items =
+                        call.receive<List<CategoryAttributeDefinitionSyncDto>>()
+
+                    categoryAttributeDefinitionRepository.upsertAll(items)
+
+                    call.respond(
+                        BasicOkResponse(
+                            ok = true,
+                            message = "category attribute definitions synced"
+                        )
                     )
-                )
-            }
-
-            get("/brands") {
-                val since = call.request.queryParameters["since"]
-                    ?.toLongOrNull()
-                    ?: 0L
-
-                val brands = if (since > 0L) {
-                    brandRepository.getChangedSince(since)
-                } else {
-                    brandRepository.getAll()
                 }
 
-                call.respond(brands)
-            }
-            post("/brands") {
-                val brands = call.receive<List<BrandSyncDto>>()
+                get("/product-attribute-values") {
 
-                brandRepository.upsertAll(brands)
+                    val since = call.request.queryParameters["since"]
+                        ?.toLongOrNull()
+                        ?: 0L
 
-                call.respond(
-                    BasicOkResponse(
-                        ok = true,
-                        message = "brands synced"
+                    val items =
+                        if (since > 0L) {
+                            productAttributeValueRepository
+                                .getChangedSince(since)
+                        } else {
+                            productAttributeValueRepository
+                                .getAll()
+                        }
+
+                    call.respond(items)
+                }
+                post("/product-attribute-values") {
+
+                    val items =
+                        call.receive<List<ProductAttributeValueSyncDto>>()
+
+                    productAttributeValueRepository.upsertAll(items)
+
+                    call.respond(
+                        BasicOkResponse(
+                            ok = true,
+                            message = "product attribute values synced"
+                        )
                     )
-                )
-            }
-
-            get("/products") {
-                val since = call.request.queryParameters["since"]
-                    ?.toLongOrNull()
-                    ?: 0L
-
-                val products = if (since > 0L) {
-                    productRepository.getChangedSince(since)
-                } else {
-                    productRepository.getAll()
                 }
 
-                call.respond(products)
-            }
-            post("/products") {
-                val products = call.receive<List<ProductSyncDto>>()
+                get("/units") {
+                    val since = call.request.queryParameters["since"]
+                        ?.toLongOrNull()
+                        ?: 0L
 
-                productRepository.upsertAll(products)
+                    val items =
+                        if (since > 0L) {
+                            productUnitRepository.getChangedSince(since)
+                        } else {
+                            productUnitRepository.getAll()
+                        }
 
-                call.respond(
-                    BasicOkResponse(
-                        ok = true,
-                        message = "products synced"
+                    call.respond(items)
+                }
+                post("/units") {
+                    val items =
+                        call.receive<List<ProductUnitSyncDto>>()
+
+                    productUnitRepository.upsertAll(items)
+
+                    call.respond(
+                        BasicOkResponse(
+                            ok = true,
+                            message = "units synced"
+                        )
                     )
-                )
-            }
-            get("/product-images") {
-                val since = call.request.queryParameters["since"]
-                    ?.toLongOrNull()
-                    ?: 0L
-
-                val images = if (since > 0L) {
-                    productImageRepository.getChangedSince(since)
-                } else {
-                    productImageRepository.getAll()
                 }
 
-                call.respond(images)
-            }
-            post("/product-images") {
-                val images = call.receive<List<ProductImageSyncDto>>()
+                get("/currency-rates") {
 
-                productImageRepository.upsertAll(images)
+                    val since = call.request.queryParameters["since"]
+                        ?.toLongOrNull()
+                        ?: 0L
 
-                call.respond(
-                    BasicOkResponse(
-                        ok = true,
-                        message = "product images synced"
+                    val items =
+                        if (since > 0L) {
+                            currencyRateRepository.getChangedSince(since)
+                        } else {
+                            currencyRateRepository.getAll()
+                        }
+
+                    call.respond(items)
+                }
+                post("/currency-rates") {
+
+                    val items =
+                        call.receive<List<CurrencyRateSyncDto>>()
+
+                    currencyRateRepository.upsertAll(items)
+
+                    call.respond(
+                        BasicOkResponse(
+                            ok = true,
+                            message = "currency rates synced"
+                        )
                     )
-                )
-            }
+                }
 
-            get("/inventory-transactions") {
 
-                val since = call.request.queryParameters["since"]
-                    ?.toLongOrNull()
-                    ?: 0L
 
-                val items =
-                    if (since > 0L) {
-                        inventoryTransactionRepository
-                            .getChangedSince(since)
-                    } else {
-                        inventoryTransactionRepository
-                            .getAll()
-                    }
-
-                call.respond(items)
-            }
-            post("/inventory-transactions") {
-
-                val items =
-                    call.receive<List<InventoryTransactionSyncDto>>()
-
-                inventoryTransactionRepository.upsertAll(items)
-
-                call.respond(
-                    BasicOkResponse(
-                        ok = true,
-                        message = "inventory transactions synced"
-                    )
-                )
-            }
-
-            get("/purchase-prices") {
-
-                val since = call.request.queryParameters["since"]
-                    ?.toLongOrNull()
-                    ?: 0L
-
-                val items =
-                    if (since > 0L) {
-                        productPurchasePriceRepository
-                            .getChangedSince(since)
-                    } else {
-                        productPurchasePriceRepository
-                            .getAll()
-                    }
-
-                call.respond(items)
-            }
-            post("/purchase-prices") {
-
-                val items =
-                    call.receive<List<ProductPurchasePriceSyncDto>>()
-
-                productPurchasePriceRepository.upsertAll(items)
-
-                call.respond(
-                    BasicOkResponse(
-                        ok = true,
-                        message = "purchase prices synced"
-                    )
-                )
-            }
-
-            get("/sale-prices") {
-
-                val since = call.request.queryParameters["since"]
-                    ?.toLongOrNull()
-                    ?: 0L
-
-                val items =
-                    if (since > 0L) {
-                        productSalePriceRepository
-                            .getChangedSince(since)
-                    } else {
-                        productSalePriceRepository
-                            .getAll()
-                    }
-
-                call.respond(items)
-            }
-            post("/sale-prices") {
-
-                val items =
-                    call.receive<List<ProductSalePriceSyncDto>>()
-
-                productSalePriceRepository.upsertAll(items)
-
-                call.respond(
-                    BasicOkResponse(
-                        ok = true,
-                        message = "sale prices synced"
-                    )
-                )
-            }
-
-            get("/category-attribute-definitions") {
-
-                val since = call.request.queryParameters["since"]
-                    ?.toLongOrNull()
-                    ?: 0L
-
-                val items =
-                    if (since > 0L) {
-                        categoryAttributeDefinitionRepository
-                            .getChangedSince(since)
-                    } else {
-                        categoryAttributeDefinitionRepository
-                            .getAll()
-                    }
-
-                call.respond(items)
-            }
-            post("/category-attribute-definitions") {
-
-                val items =
-                    call.receive<List<CategoryAttributeDefinitionSyncDto>>()
-
-                categoryAttributeDefinitionRepository.upsertAll(items)
-
-                call.respond(
-                    BasicOkResponse(
-                        ok = true,
-                        message = "category attribute definitions synced"
-                    )
-                )
-            }
-
-            get("/product-attribute-values") {
-
-                val since = call.request.queryParameters["since"]
-                    ?.toLongOrNull()
-                    ?: 0L
-
-                val items =
-                    if (since > 0L) {
-                        productAttributeValueRepository
-                            .getChangedSince(since)
-                    } else {
-                        productAttributeValueRepository
-                            .getAll()
-                    }
-
-                call.respond(items)
-            }
-            post("/product-attribute-values") {
-
-                val items =
-                    call.receive<List<ProductAttributeValueSyncDto>>()
-
-                productAttributeValueRepository.upsertAll(items)
-
-                call.respond(
-                    BasicOkResponse(
-                        ok = true,
-                        message = "product attribute values synced"
-                    )
-                )
-            }
-
-            get("/units") {
-                val since = call.request.queryParameters["since"]
-                    ?.toLongOrNull()
-                    ?: 0L
-
-                val items =
-                    if (since > 0L) {
-                        productUnitRepository.getChangedSince(since)
-                    } else {
-                        productUnitRepository.getAll()
-                    }
-
-                call.respond(items)
-            }
-            post("/units") {
-                val items =
-                    call.receive<List<ProductUnitSyncDto>>()
-
-                productUnitRepository.upsertAll(items)
-
-                call.respond(
-                    BasicOkResponse(
-                        ok = true,
-                        message = "units synced"
-                    )
-                )
-            }
-
-            get("/currency-rates") {
-
-                val since = call.request.queryParameters["since"]
-                    ?.toLongOrNull()
-                    ?: 0L
-
-                val items =
-                    if (since > 0L) {
-                        currencyRateRepository.getChangedSince(since)
-                    } else {
-                        currencyRateRepository.getAll()
-                    }
-
-                call.respond(items)
-            }
-            post("/currency-rates") {
-
-                val items =
-                    call.receive<List<CurrencyRateSyncDto>>()
-
-                currencyRateRepository.upsertAll(items)
-
-                call.respond(
-                    BasicOkResponse(
-                        ok = true,
-                        message = "currency rates synced"
-                    )
-                )
             }
 
 
-
-        }
-
-
-
-
-
-        // --- مسیرهای محافظت‌شده با Bearer ---
-        authenticate("auth-jwt") {
             get("/me") {
                 val uid = call.principal<JWTPrincipal>()!!.subject!!.toInt()
                 val u = users.getById(uid) ?: return@get call.respond(HttpStatusCode.NotFound)
