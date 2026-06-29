@@ -73,7 +73,8 @@ fun Application.module() {
     // --- کانفیگ ساده (در عمل از env/config بخوان)
     val issuer = "solarshop.local"
     val audience = "solarshop.app"
-    val jwtSecret = System.getenv("JWT_SECRET") ?: "dev-secret-change-me"
+    val jwtSecret = System.getenv("JWT_SECRET")
+        ?: error("JWT_SECRET env is required")
 
     val sms: SmsSender = ConsoleSmsSender()
     val otp = OtpService(sms)
@@ -131,8 +132,8 @@ fun Application.module() {
     val currencyRateRepository = CurrencyRateRepository()
 
 
-    val brsApiKey =
-        System.getenv("BRS_API_KEY") ?: ""
+    val brsApiKey = System.getenv("BRS_API_KEY")
+        ?: error("BRS_API_KEY env is required")
 
     val externalHttpClient =
         HttpClient(CIO) {
