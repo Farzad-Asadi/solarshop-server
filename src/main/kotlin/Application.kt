@@ -130,6 +130,7 @@ fun Application.module() {
     val productAttributeValueRepository = ProductAttributeValueRepository()
     val productUnitRepository = ProductUnitRepository()
     val currencyRateRepository = CurrencyRateRepository()
+    val productSaleTransactionRepository = ProductSaleTransactionRepository()
 
 
     val brsApiKey = System.getenv("BRS_API_KEY")
@@ -619,6 +620,40 @@ fun Application.module() {
                         BasicOkResponse(
                             ok = true,
                             message = "sale prices synced"
+                        )
+                    )
+                }
+
+                get("/product-sale-transactions") {
+
+                    val since =
+                        call.request.queryParameters["since"]
+                            ?.toLongOrNull()
+                            ?: 0L
+
+                    val items =
+                        if (since > 0L) {
+                            productSaleTransactionRepository
+                                .getChangedSince(since)
+                        } else {
+                            productSaleTransactionRepository
+                                .getAll()
+                        }
+
+                    call.respond(items)
+                }
+                post("/product-sale-transactions") {
+
+                    val items =
+                        call.receive<List<ProductSaleTransactionSyncDto>>()
+
+                    productSaleTransactionRepository
+                        .upsertAll(items)
+
+                    call.respond(
+                        BasicOkResponse(
+                            ok = true,
+                            message = "product sale transactions synced"
                         )
                     )
                 }

@@ -38,6 +38,7 @@ object DatabaseFactory {
                 ProductAttributeValuesTable,
                 ProductUnitsTable,
                 CurrencyRatesTable,
+                ProductSaleTransactionsTable,
 
 
 
