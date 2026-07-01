@@ -17,7 +17,7 @@ class CurrencyRateRepository {
     fun getChangedSince(since: Long): List<CurrencyRateSyncDto> = transaction {
         CurrencyRatesTable
             .select {
-                CurrencyRatesTable.updatedAt greater since
+                CurrencyRatesTable.serverUpdatedAt  greater since
             }
             .map { it.toDto() }
     }
@@ -25,12 +25,16 @@ class CurrencyRateRepository {
     fun upsertAll(items: List<CurrencyRateSyncDto>) = transaction {
         items.forEach { item ->
 
+            val acceptedAt =
+                System.currentTimeMillis()
+
             val existing =
                 CurrencyRatesTable
                     .select {
                         CurrencyRatesTable.uid eq item.uid
                     }
                     .singleOrNull()
+
 
             if (existing == null) {
                 CurrencyRatesTable.insert {
@@ -41,6 +45,7 @@ class CurrencyRateRepository {
                     it[note] = item.note
                     it[createdAt] = item.createdAt
                     it[updatedAt] = item.updatedAt
+                    it[serverUpdatedAt] = acceptedAt
                     it[deletedAt] = item.deletedAt
                 }
             } else {
@@ -68,6 +73,7 @@ class CurrencyRateRepository {
                     return@forEach
                 }
 
+
                 CurrencyRatesTable.update({
                     CurrencyRatesTable.uid eq item.uid
                 }) {
@@ -76,9 +82,8 @@ class CurrencyRateRepository {
                     it[sourceText] = item.source
                     it[note] = item.note
                     it[createdAt] = item.createdAt
-                    it[updatedAt] =
-                        if (incomingIsDelete) System.currentTimeMillis()
-                        else item.updatedAt
+                    it[updatedAt] =item.updatedAt
+                    it[serverUpdatedAt] = acceptedAt
                     it[deletedAt] = item.deletedAt
                 }
             }

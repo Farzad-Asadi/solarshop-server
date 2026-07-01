@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import com.example.data.table.ProductSalePricesTable
+import com.example.data.table.ProductsTable
 import com.example.server.dto.ProductSalePriceSyncDto
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -17,13 +18,16 @@ class ProductSalePriceRepository {
     fun getChangedSince(since: Long): List<ProductSalePriceSyncDto> = transaction {
         ProductSalePricesTable
             .select {
-                ProductSalePricesTable.updatedAt greater since
+                ProductSalePricesTable.serverUpdatedAt greater since
             }
             .map { it.toDto() }
     }
 
     fun upsertAll(items: List<ProductSalePriceSyncDto>) = transaction {
         items.forEach { item ->
+
+            val acceptedAt =
+                System.currentTimeMillis()
 
             val existing = ProductSalePricesTable
                 .select {
@@ -45,6 +49,7 @@ class ProductSalePriceRepository {
                     it[isActive] = item.isActive
                     it[createdAt] = item.createdAt
                     it[updatedAt] = item.updatedAt
+                    it[serverUpdatedAt] = acceptedAt
                     it[deletedAt] = item.deletedAt
                 }
             } else {
@@ -81,9 +86,8 @@ class ProductSalePriceRepository {
                     it[note] = item.note
                     it[isActive] = item.isActive
                     it[createdAt] = item.createdAt
-                    it[updatedAt] =
-                        if (incomingIsDelete) System.currentTimeMillis()
-                        else item.updatedAt
+                    it[updatedAt] = item.updatedAt
+                    it[serverUpdatedAt] = acceptedAt
                     it[deletedAt] = item.deletedAt
                 }
             }

@@ -21,7 +21,7 @@ class ProductRepository {
         return transaction {
             ProductsTable
                 .select {
-                    ProductsTable.updatedAt greater since
+                    ProductsTable.serverUpdatedAt greater since
                 }
                 .map(::toDto)
         }
@@ -33,6 +33,8 @@ class ProductRepository {
         transaction {
 
             products.forEach { product ->
+                val acceptedAt =
+                    System.currentTimeMillis()
 
                 val existing =
                     ProductsTable
@@ -43,6 +45,7 @@ class ProductRepository {
 
                 if (existing == null) {
 
+
                     ProductsTable.insert {
                         it[uid] = product.uid
                         it[categoryUid] = product.categoryUid
@@ -52,6 +55,7 @@ class ProductRepository {
                         it[description] = product.description
                         it[isArchived] = product.isArchived
                         it[updatedAt] = product.updatedAt
+                        it[serverUpdatedAt] = acceptedAt
                         it[deletedAt] = product.deletedAt
                     }
 
@@ -73,6 +77,8 @@ class ProductRepository {
                     if (!shouldAccept) {
                         return@forEach
                     }
+                    val acceptedAt =
+                        System.currentTimeMillis()
 
                     ProductsTable.update(
                         { ProductsTable.uid eq product.uid }
@@ -83,7 +89,8 @@ class ProductRepository {
                         it[model] = product.model
                         it[description] = product.description
                         it[isArchived] = product.isArchived
-                        it[updatedAt] = if (incomingIsDelete) System.currentTimeMillis() else product.updatedAt
+                        it[updatedAt] = product.updatedAt
+                        it[serverUpdatedAt] = acceptedAt
                         it[deletedAt] = product.deletedAt
                     }
                 }

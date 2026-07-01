@@ -45,6 +45,7 @@ object DatabaseFactory {
 
 
             )
+            ServerSyncMigration.run()
         }
     }
 }

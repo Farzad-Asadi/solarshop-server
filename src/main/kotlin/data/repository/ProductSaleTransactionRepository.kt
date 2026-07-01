@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import com.example.data.table.ProductSaleTransactionsTable
+import com.example.data.table.ProductsTable
 import com.example.server.dto.ProductSaleTransactionSyncDto
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.insert
@@ -24,7 +25,7 @@ class ProductSaleTransactionRepository {
         transaction {
             ProductSaleTransactionsTable
                 .select {
-                    ProductSaleTransactionsTable.updatedAt greater since
+                    ProductSaleTransactionsTable.serverUpdatedAt greater since
                 }
                 .map { it.toDto() }
         }
@@ -33,6 +34,9 @@ class ProductSaleTransactionRepository {
         items: List<ProductSaleTransactionSyncDto>
     ) = transaction {
         items.forEach { item ->
+
+            val acceptedAt =
+                System.currentTimeMillis()
 
             val existing =
                 ProductSaleTransactionsTable
@@ -110,6 +114,8 @@ class ProductSaleTransactionRepository {
 
                     it[updatedAt] =
                         item.updatedAt
+
+                    it[serverUpdatedAt] = acceptedAt
 
                     it[deletedAt] =
                         item.deletedAt
@@ -207,12 +213,9 @@ class ProductSaleTransactionRepository {
                     it[createdAt] =
                         item.createdAt
 
-                    it[updatedAt] =
-                        if (incomingIsDelete) {
-                            System.currentTimeMillis()
-                        } else {
-                            item.updatedAt
-                        }
+                    it[updatedAt] = item.updatedAt
+
+                    it[serverUpdatedAt] = acceptedAt
 
                     it[deletedAt] =
                         item.deletedAt

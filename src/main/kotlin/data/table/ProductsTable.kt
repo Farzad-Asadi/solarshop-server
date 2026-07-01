@@ -20,5 +20,8 @@ object ProductsTable : LongIdTable("products") {
 
     val updatedAt = long("updated_at")
 
+    val serverUpdatedAt =
+        long("server_updated_at").default(0L)
+
     val deletedAt = long("deleted_at").nullable()
 }

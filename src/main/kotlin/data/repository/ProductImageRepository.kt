@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import com.example.data.table.ProductImagesTable
+import com.example.data.table.ProductsTable
 import com.example.server.dto.ProductImageSyncDto
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -17,13 +18,16 @@ class ProductImageRepository {
     fun getChangedSince(since: Long): List<ProductImageSyncDto> = transaction {
         ProductImagesTable
             .select {
-                ProductImagesTable.updatedAt greater since
+                ProductImagesTable.serverUpdatedAt greater since
             }
             .map { it.toDto() }
     }
 
     fun upsertAll(images: List<ProductImageSyncDto>) = transaction {
         images.forEach { image ->
+
+            val acceptedAt =
+                System.currentTimeMillis()
 
             val existing = ProductImagesTable
                 .select {
@@ -38,6 +42,7 @@ class ProductImageRepository {
                     it[fileName] = image.fileName
                     it[sortOrder] = image.sortOrder
                     it[updatedAt] = image.updatedAt
+                    it[serverUpdatedAt] = acceptedAt
                     it[deletedAt] = image.deletedAt
                 }
             } else {
@@ -64,9 +69,8 @@ class ProductImageRepository {
                     it[productUid] = image.productUid
                     it[fileName] = image.fileName
                     it[sortOrder] = image.sortOrder
-                    it[updatedAt] =
-                        if (incomingIsDelete) System.currentTimeMillis()
-                        else image.updatedAt
+                    it[updatedAt] = image.updatedAt
+                    it[serverUpdatedAt] = acceptedAt
                     it[deletedAt] = image.deletedAt
                 }
             }

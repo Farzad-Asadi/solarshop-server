@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import com.example.data.table.ProductCategoriesTable
+import com.example.data.table.ProductsTable
 import com.example.server.dto.CategorySyncDto
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.select
@@ -31,6 +32,9 @@ class ProductCategoryRepository {
         transaction {
             categories.forEach { category ->
 
+                val acceptedAt =
+                    System.currentTimeMillis()
+
                 val existing = ProductCategoriesTable
                     .select { ProductCategoriesTable.uid eq category.uid }
                     .singleOrNull()
@@ -42,6 +46,7 @@ class ProductCategoryRepository {
                         it[imageFileName] = category.imageFileName
                         it[sortOrder] = category.sortOrder
                         it[updatedAt] = category.updatedAt
+                        it[serverUpdatedAt] = acceptedAt
                         it[deletedAt] = category.deletedAt
                     }
                 } else {
@@ -57,6 +62,7 @@ class ProductCategoryRepository {
                         it[imageFileName] = category.imageFileName
                         it[sortOrder] = category.sortOrder
                         it[updatedAt] = category.updatedAt
+                        it[serverUpdatedAt] = acceptedAt
                         it[deletedAt] = category.deletedAt
                     }
                 }
@@ -68,7 +74,7 @@ class ProductCategoryRepository {
         return transaction {
             ProductCategoriesTable
                 .select {
-                    ProductCategoriesTable.updatedAt greater since
+                    ProductCategoriesTable.serverUpdatedAt greater since
                 }
                 .map { row ->
                     CategorySyncDto(

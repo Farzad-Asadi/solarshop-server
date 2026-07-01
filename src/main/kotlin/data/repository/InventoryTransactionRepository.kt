@@ -1,5 +1,6 @@
 package com.example.data.repository
 
+import com.example.data.table.CurrencyRatesTable
 import com.example.data.table.InventoryTransactionsTable
 import com.example.server.dto.InventoryTransactionSyncDto
 import org.jetbrains.exposed.sql.*
@@ -17,19 +18,23 @@ class InventoryTransactionRepository {
     fun getChangedSince(since: Long): List<InventoryTransactionSyncDto> = transaction {
         InventoryTransactionsTable
             .select {
-                InventoryTransactionsTable.updatedAt greater since
+                InventoryTransactionsTable.serverUpdatedAt greater since
             }
             .map { it.toDto() }
     }
 
     fun upsertAll(items: List<InventoryTransactionSyncDto>) = transaction {
         items.forEach { item ->
+            val acceptedAt =
+                System.currentTimeMillis()
 
             val existing = InventoryTransactionsTable
                 .select {
                     InventoryTransactionsTable.uid eq item.uid
                 }
                 .singleOrNull()
+
+
 
             if (existing == null) {
                 InventoryTransactionsTable.insert {
@@ -40,6 +45,7 @@ class InventoryTransactionRepository {
                     it[note] = item.note
                     it[createdAt] = item.createdAt
                     it[updatedAt] = item.updatedAt
+                    it[serverUpdatedAt] = acceptedAt
                     it[deletedAt] = item.deletedAt
                 }
             } else {
@@ -68,9 +74,8 @@ class InventoryTransactionRepository {
                     it[transactionType] = item.transactionType
                     it[note] = item.note
                     it[createdAt] = item.createdAt
-                    it[updatedAt] =
-                        if (incomingIsDelete) System.currentTimeMillis()
-                        else item.updatedAt
+                    it[updatedAt] = item.updatedAt
+                    it[serverUpdatedAt] = acceptedAt
                     it[deletedAt] = item.deletedAt
                 }
             }

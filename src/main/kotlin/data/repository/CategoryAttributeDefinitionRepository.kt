@@ -17,13 +17,15 @@ class CategoryAttributeDefinitionRepository {
     fun getChangedSince(since: Long): List<CategoryAttributeDefinitionSyncDto> = transaction {
         CategoryAttributeDefinitionsTable
             .select {
-                CategoryAttributeDefinitionsTable.updatedAt greater since
+                CategoryAttributeDefinitionsTable.serverUpdatedAt greater since
             }
             .map { it.toDto() }
     }
 
     fun upsertAll(items: List<CategoryAttributeDefinitionSyncDto>) = transaction {
         items.forEach { item ->
+            val acceptedAt =
+                System.currentTimeMillis()
 
             val existing = CategoryAttributeDefinitionsTable
                 .select {
@@ -33,6 +35,7 @@ class CategoryAttributeDefinitionRepository {
 
             if (existing == null) {
                 CategoryAttributeDefinitionsTable.insert {
+
                     it[uid] = item.uid
                     it[categoryUid] = item.categoryUid
                     it[title] = item.title
@@ -46,6 +49,7 @@ class CategoryAttributeDefinitionRepository {
                     it[isActive] = item.isActive
                     it[createdAt] = item.createdAt
                     it[updatedAt] = item.updatedAt
+                    it[serverUpdatedAt] = acceptedAt
                     it[deletedAt] = item.deletedAt
                 }
             } else {
@@ -73,6 +77,7 @@ class CategoryAttributeDefinitionRepository {
                 CategoryAttributeDefinitionsTable.update({
                     CategoryAttributeDefinitionsTable.uid eq item.uid
                 }) {
+
                     it[categoryUid] = item.categoryUid
                     it[title] = item.title
                     it[key] = item.key
@@ -84,9 +89,8 @@ class CategoryAttributeDefinitionRepository {
                     it[enumOptions] = item.enumOptions
                     it[isActive] = item.isActive
                     it[createdAt] = item.createdAt
-                    it[updatedAt] =
-                        if (incomingIsDelete) System.currentTimeMillis()
-                        else item.updatedAt
+                    it[updatedAt] = item.updatedAt
+                    it[serverUpdatedAt] = acceptedAt
                     it[deletedAt] = item.deletedAt
                 }
             }

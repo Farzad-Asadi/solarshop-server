@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import com.example.data.table.ProductBrandsTable
+import com.example.data.table.ProductsTable
 import com.example.server.dto.BrandSyncDto
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.select
@@ -31,7 +32,7 @@ class ProductBrandRepository {
     fun getChangedSince(since: Long): List<BrandSyncDto> {
         return transaction {
             ProductBrandsTable
-                .select { ProductBrandsTable.updatedAt greater since }
+                .select { ProductBrandsTable.serverUpdatedAt greater since }
                 .map { row ->
                     BrandSyncDto(
                         uid = row[ProductBrandsTable.uid],
@@ -50,6 +51,9 @@ class ProductBrandRepository {
         transaction {
             brands.forEach { brand ->
 
+                val acceptedAt =
+                    System.currentTimeMillis()
+
                 val existing = ProductBrandsTable
                     .select { ProductBrandsTable.uid eq brand.uid }
                     .singleOrNull()
@@ -62,6 +66,7 @@ class ProductBrandRepository {
                         it[imageFileName] = brand.imageFileName
                         it[isActive] = brand.isActive
                         it[updatedAt] = brand.updatedAt
+                        it[serverUpdatedAt] = acceptedAt
                         it[deletedAt] = brand.deletedAt
                     }
                 } else {
@@ -78,6 +83,7 @@ class ProductBrandRepository {
                         it[imageFileName] = brand.imageFileName
                         it[isActive] = brand.isActive
                         it[updatedAt] = brand.updatedAt
+                        it[serverUpdatedAt] = acceptedAt
                         it[deletedAt] = brand.deletedAt
                     }
                 }
